@@ -63,7 +63,7 @@ export function LoginScreen() {
             <div className="text-center">
               <h2 className="text-lg font-semibold">Hemen Başla</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Google ile giriş yap veya test için Demo hesabı kullan
+                Google hesabınla giriş yaparak çalışmaya başlayabilirsin
               </p>
             </div>
 
@@ -81,31 +81,10 @@ export function LoginScreen() {
               Google ile Giriş Yap
             </Button>
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border/50" /></div>
-              <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">veya</span></div>
-            </div>
-
-            <form onSubmit={handleDemoLogin} className="space-y-3">
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  placeholder="Demo için adınızı girin..."
-                  value={demoName}
-                  onChange={(e) => setDemoName(e.target.value)}
-                  className="bg-background/40 flex-1"
-                />
-                <Button type="submit" disabled={!demoName.trim()} className="bg-primary hover:bg-primary/90">
-                  <LogIn className="h-4 w-4 mr-2" />
-                  Test Girişi
-                </Button>
-              </div>
-            </form>
-
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2 pt-2">
               <Sparkles className="h-3 w-3 text-primary/50 shrink-0" />
               <p className="text-[11px] text-muted-foreground">
-                Google girişi için Google Cloud Console'dan geçerli CLIENT_ID ve SECRET ayarlamanız gerekmektedir. Şimdilik Demo ile test edebilirsiniz.
+                Güvenli giriş için Google altyapısı kullanılmaktadır.
               </p>
             </div>
           </CardContent>
