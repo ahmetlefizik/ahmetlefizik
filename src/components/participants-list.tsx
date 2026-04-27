@@ -73,10 +73,10 @@ export function ParticipantsList() {
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium truncate">{m.name}</p>
                       {isOwner && <Crown className="h-3.5 w-3.5 text-amber-400 shrink-0" />}
-                      {!isOwner && activeGroup.moderators.includes(m.id) && <ShieldCheck className="h-3 w-3 text-blue-400 shrink-0" title="Moderatör" />}
+                      {!isOwner && activeGroup.moderators.includes(m.id) && <ShieldCheck className="h-3 w-3 text-blue-400 shrink-0" />}
                       {isMe && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-primary/30 text-primary">Sen</Badge>}
                       {m.streak !== undefined && m.streak > 0 && (
-                        <div className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20" title={`${m.streak} gün seri`}>
+                        <div className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                           {m.streak >= 30 ? <Cat className="h-3 w-3 -ml-0.5 text-orange-500" /> : <Flame className="h-3 w-3 -ml-0.5" />}
                           {m.streak}
                         </div>
@@ -90,17 +90,17 @@ export function ParticipantsList() {
                     </Badge>
                   )}
                   {!isMe && (
-                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:text-primary hover:bg-primary/10 mr-1" onClick={() => handlePoke(m.name)} title={`${m.name} adlı kullanıcıyı dürt`}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:text-primary hover:bg-primary/10 mr-1" onClick={() => handlePoke(m.name)}>
                       <BellRing className="h-3.5 w-3.5" />
                     </Button>
                   )}
                   {ownerIsMe && !isOwner && (
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                      <DropdownMenuTrigger render={
                         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                           <MoreVertical className="h-3.5 w-3.5" />
                         </Button>
-                      </DropdownMenuTrigger>
+                      } />
                       <DropdownMenuContent align="end" className="w-40">
                         {!activeGroup.moderators.includes(m.id) && (
                           <DropdownMenuItem onClick={() => assignModerator(activeGroup.id, m.id)} className="cursor-pointer">

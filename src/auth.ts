@@ -33,5 +33,5 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session;
     },
   },
-  secret: "ahmetlefizik-secret-key-change-in-production"
+  secret: process.env.AUTH_SECRET,
 });
