@@ -67,15 +67,8 @@ function generateCode(): string {
 }
 
 function generateStudyRecords(): StudyRecord[] {
-  const records: StudyRecord[] = [];
-  const now = new Date();
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const minutes = i === 0 ? 45 : Math.floor(Math.random() * 180) + 10;
-    records.push({ date: d.toISOString().split("T")[0], minutes });
-  }
-  return records;
+  // Start with a clean slate for production
+  return [];
 }
 
 function calculateStreak(records: StudyRecord[]): number {
@@ -147,8 +140,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       bannedMembers: [],
       members: [],
       messages: [
-        { id: "m1", senderId: "system", senderName: "Sistem", text: "AhmetLeFizik platformuna hoş geldiniz! 👋", time: "00:00", isSystem: true },
-        { id: "m2", senderId: "system", senderName: "Sistem", text: "Bu oda herkese açıktır. Beraber çalışmak için kodunuzu paylaşabilir veya yeni odalar oluşturabilirsiniz.", time: "00:00", isSystem: true }
+        { id: "m1", senderId: "system", senderName: "Sistem", text: "AhmetLeFizik Genel Odasına hoş geldiniz! 👋", time: "00:00", isSystem: true },
       ],
       timerState: { isRunning: false, timeLeft: 1500, mode: 'study', updatedAt: Date.now() },
       createdAt: new Date(),
@@ -184,10 +176,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!user) return false;
     const trimmed = code.trim().toUpperCase();
     const groupIndex = groups.findIndex((g) => g.code === trimmed);
-    if (groupIndex === -1) return false;
+    
+    if (groupIndex === -1) {
+      alert("Grup bulunamadı! Lütfen kodu kontrol edin.");
+      return false;
+    }
 
     const group = groups[groupIndex];
-    if (group.bannedMembers.includes(user.id)) return false; // Banned check
+    if (group.bannedMembers.includes(user.id)) {
+      alert("Bu gruptan engellenmişsiniz.");
+      return false;
+    }
 
     if (group.members.some((m) => m.id === user.id)) {
       setActiveGroupId(group.id);
@@ -208,7 +207,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     setActiveGroupId(group.id);
     return true;
-  }, [user, groups]);
+  }, [user, groups, studyRecords]);
 
   const leaveGroup = useCallback((groupId: string) => {
     if (!user) return;
