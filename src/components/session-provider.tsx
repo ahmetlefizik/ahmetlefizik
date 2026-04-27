@@ -139,14 +139,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [groups, setGroups] = useState<StudyGroup[]>(() => {
     return [{
-      id: "demo-group",
-      name: "Fizik Çalışma Grubu",
-      code: "FZK101",
-      ownerId: "demo-owner",
+      id: "public-group",
+      name: "AhmetLeFizik Genel",
+      code: "GENEL",
+      ownerId: "system",
       moderators: [],
       bannedMembers: [],
       members: [],
-      messages: [],
+      messages: [
+        { id: "m1", senderId: "system", senderName: "Sistem", text: "AhmetLeFizik platformuna hoş geldiniz! 👋", time: "00:00", isSystem: true },
+        { id: "m2", senderId: "system", senderName: "Sistem", text: "Bu oda herkese açıktır. Beraber çalışmak için kodunuzu paylaşabilir veya yeni odalar oluşturabilirsiniz.", time: "00:00", isSystem: true }
+      ],
       timerState: { isRunning: false, timeLeft: 1500, mode: 'study', updatedAt: Date.now() },
       createdAt: new Date(),
     }];

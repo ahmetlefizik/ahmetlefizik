@@ -94,7 +94,7 @@ export function ParticipantsList() {
                       <BellRing className="h-3.5 w-3.5" />
                     </Button>
                   )}
-                  {ownerIsMe && !isOwner && (
+                  {(ownerIsMe || isModerator(activeGroup.id)) && !isOwner && (
                     <DropdownMenu>
                       <DropdownMenuTrigger render={
                         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -102,7 +102,7 @@ export function ParticipantsList() {
                         </Button>
                       } />
                       <DropdownMenuContent align="end" className="w-40">
-                        {!activeGroup.moderators.includes(m.id) && (
+                        {ownerIsMe && !activeGroup.moderators.includes(m.id) && (
                           <DropdownMenuItem onClick={() => assignModerator(activeGroup.id, m.id)} className="cursor-pointer">
                             <ShieldCheck className="h-3.5 w-3.5 mr-2" />
                             Moderatör Yap
