@@ -201,9 +201,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Subscribe to all relevant tables
       const channel = supabase.channel('app-sync')
-        .on('postgres_changes', { event: '*', table: 'study_groups' }, fetchGroups)
-        .on('postgres_changes', { event: '*', table: 'group_members' }, fetchGroups)
-        .on('postgres_changes', { event: '*', table: 'messages' }, fetchGroups)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'study_groups' }, fetchGroups)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, fetchGroups)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, fetchGroups)
         .subscribe();
 
       return () => {
