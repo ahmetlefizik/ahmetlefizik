@@ -28,16 +28,16 @@ export function GroupManager() {
 
   const myGroups = groups.filter((g) => g.members.some((m) => m.id === user?.id));
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newGroupName.trim()) return;
-    createGroup(newGroupName.trim());
+    await createGroup(newGroupName.trim());
     setNewGroupName("");
     setCreateOpen(false);
   };
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     setJoinError("");
-    const ok = joinGroup(joinCode);
+    const ok = await joinGroup(joinCode);
     if (ok) {
       setJoinCode("");
       setJoinOpen(false);
