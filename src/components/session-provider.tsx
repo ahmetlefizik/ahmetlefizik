@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { useSession as useNextAuthSession } from "next-auth/react";
+import { supabase } from "@/lib/supabase";
 
 export interface GroupMember {
   id: string;
@@ -47,8 +48,8 @@ interface AppContextValue {
   groups: StudyGroup[];
   activeGroup: StudyGroup | null;
   setActiveGroupId: (id: string | null) => void;
-  createGroup: (name: string) => string;
-  joinGroup: (code: string) => boolean;
+  createGroup: (name: string) => Promise<string>;
+  joinGroup: (code: string) => Promise<boolean>;
   leaveGroup: (groupId: string) => void;
   kickMember: (groupId: string, memberId: string, ban?: boolean) => void;
   assignModerator: (groupId: string, memberId: string) => void;
@@ -64,11 +65,6 @@ interface AppContextValue {
 
 function generateCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
-
-function generateStudyRecords(): StudyRecord[] {
-  // Start with a clean slate for production
-  return [];
 }
 
 function calculateStreak(records: StudyRecord[]): number {
@@ -115,8 +111,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isLoading = status === "loading";
 
   const [userState, setUserState] = useState<{ id: string; name: string; email: string; image?: string } | null>(null);
+  const [groups, setGroups] = useState<StudyGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [studyRecords, setStudyRecords] = useState<StudyRecord[]>([]);
 
-  // Initialize from session only once
+  // Initialize from session
   useEffect(() => {
     if (session?.user && !userState) {
       setUserState({
@@ -130,146 +129,256 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const user = userState;
 
-  const [groups, setGroups] = useState<StudyGroup[]>(() => {
-    return [{
-      id: "public-group",
-      name: "AhmetLeFizik Genel",
-      code: "GENEL",
-      ownerId: "system",
-      moderators: [],
-      bannedMembers: [],
-      members: [],
-      messages: [
-        { id: "m1", senderId: "system", senderName: "Sistem", text: "AhmetLeFizik Genel Odasına hoş geldiniz! 👋", time: "00:00", isSystem: true },
-      ],
-      timerState: { isRunning: false, timeLeft: 1500, mode: 'study', updatedAt: Date.now() },
-      createdAt: new Date(),
-    }];
-  });
+  // Real-time Supabase Fetching
+  const fetchGroups = useCallback(async () => {
+    if (!user) return;
 
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  const [studyRecords, setStudyRecords] = useState<StudyRecord[]>(generateStudyRecords);
+    // Fetch groups where user is a member or owner
+    const { data: memberGroups, error: memberError } = await supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', user.id);
 
-  const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
+    const { data: ownedGroups, error: ownerError } = await supabase
+      .from('study_groups')
+      .select('id')
+      .eq('owner_id', user.id);
 
-  const createGroup = useCallback((name: string): string => {
-    if (!user) return "";
-    const code = generateCode();
-    const newGroup: StudyGroup = {
-      id: `g-${Date.now()}`,
-      name,
-      code,
-      ownerId: user.id,
-      moderators: [],
-      bannedMembers: [],
-      messages: [{ id: `m${Date.now()}`, senderId: 'system', senderName: 'Sistem', text: `Oda oluşturuldu: ${name}`, time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }), isSystem: true }],
-      timerState: { isRunning: false, timeLeft: 1500, mode: 'study', updatedAt: Date.now() },
-      members: [{ id: user.id, name: user.name, email: user.email, image: user.image, timerActive: false, joinedAt: new Date(), streak: calculateStreak(studyRecords) }],
-      createdAt: new Date(),
-    };
-    setGroups((prev) => [...prev, newGroup]);
-    setActiveGroupId(newGroup.id);
-    return code;
+    const groupIds = [...new Set([
+      ...(memberGroups?.map(m => m.group_id) || []),
+      ...(ownedGroups?.map(o => o.id) || []),
+      // Also include the GENEL group
+    ])];
+
+    // Get the GENEL group ID
+    const { data: genelGroup } = await supabase.from('study_groups').select('id').eq('code', 'GENEL').single();
+    if (genelGroup) groupIds.push(genelGroup.id);
+
+    const { data: allGroupsData, error: groupsError } = await supabase
+      .from('study_groups')
+      .select(`
+        *,
+        group_members(*),
+        messages(*)
+      `)
+      .in('id', groupIds);
+
+    if (allGroupsData) {
+      const formattedGroups: StudyGroup[] = allGroupsData.map(g => ({
+        id: g.id,
+        name: g.name,
+        code: g.code,
+        ownerId: g.owner_id,
+        moderators: g.moderators || [],
+        bannedMembers: g.banned_members || [],
+        timerState: g.timer_state,
+        createdAt: new Date(g.created_at),
+        members: g.group_members.map((m: any) => ({
+          id: m.user_id,
+          name: m.name,
+          email: m.email || "",
+          image: m.image,
+          timerActive: m.timer_active,
+          joinedAt: new Date(m.joined_at),
+          streak: m.streak
+        })),
+        messages: g.messages.map((m: any) => ({
+          id: m.id,
+          senderId: m.sender_id,
+          senderName: m.sender_name,
+          text: m.text,
+          time: new Date(m.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+          isSystem: m.is_system
+        }))
+      }));
+      setGroups(formattedGroups);
+    }
   }, [user]);
 
-  const joinGroup = useCallback((code: string): boolean => {
+  useEffect(() => {
+    if (user) {
+      fetchGroups();
+
+      // Subscribe to all relevant tables
+      const channel = supabase.channel('app-sync')
+        .on('postgres_changes', { event: '*', table: 'study_groups' }, fetchGroups)
+        .on('postgres_changes', { event: '*', table: 'group_members' }, fetchGroups)
+        .on('postgres_changes', { event: '*', table: 'messages' }, fetchGroups)
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user, fetchGroups]);
+
+  const createGroup = useCallback(async (name: string): Promise<string> => {
+    if (!user) return "";
+    const code = generateCode();
+    
+    const { data: group, error } = await supabase.from('study_groups').insert({
+      name,
+      code,
+      owner_id: user.id,
+      timer_state: { isRunning: false, timeLeft: 1500, mode: 'study', updatedAt: Date.now() }
+    }).select().single();
+
+    if (error) {
+      console.error("Create group error:", error);
+      return "";
+    }
+
+    // Add owner as a member
+    await supabase.from('group_members').insert({
+      group_id: group.id,
+      user_id: user.id,
+      name: user.name,
+      streak: calculateStreak(studyRecords)
+    });
+
+    // Add system message
+    await supabase.from('messages').insert({
+      group_id: group.id,
+      sender_id: 'system',
+      sender_name: 'Sistem',
+      text: `Oda oluşturuldu: ${name}`,
+      is_system: true
+    });
+
+    fetchGroups();
+    setActiveGroupId(group.id);
+    return code;
+  }, [user, studyRecords, fetchGroups]);
+
+  const joinGroup = useCallback(async (code: string): Promise<boolean> => {
     if (!user) return false;
     const trimmed = code.trim().toUpperCase();
-    const groupIndex = groups.findIndex((g) => g.code === trimmed);
-    
-    if (groupIndex === -1) {
+
+    const { data: group, error: fetchError } = await supabase
+      .from('study_groups')
+      .select('*')
+      .eq('code', trimmed)
+      .single();
+
+    if (fetchError || !group) {
       alert("Grup bulunamadı! Lütfen kodu kontrol edin.");
       return false;
     }
 
-    const group = groups[groupIndex];
-    if (group.bannedMembers.includes(user.id)) {
+    if (group.banned_members?.includes(user.id)) {
       alert("Bu gruptan engellenmişsiniz.");
       return false;
     }
 
-    if (group.members.some((m) => m.id === user.id)) {
-      setActiveGroupId(group.id);
-      return true;
+    // Check if already a member
+    const { data: existingMember } = await supabase
+      .from('group_members')
+      .select('*')
+      .eq('group_id', group.id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!existingMember) {
+      await supabase.from('group_members').insert({
+        group_id: group.id,
+        user_id: user.id,
+        name: user.name,
+        streak: calculateStreak(studyRecords)
+      });
+
+      await supabase.from('messages').insert({
+        group_id: group.id,
+        sender_id: 'system',
+        sender_name: 'Sistem',
+        text: `${user.name} odaya katıldı`,
+        is_system: true
+      });
     }
 
-    const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === group.id
-          ? { ...g, 
-              members: [...g.members, { id: user.id, name: user.name, email: user.email, image: user.image, timerActive: false, joinedAt: new Date(), streak: calculateStreak(studyRecords) }],
-              messages: [...g.messages, { id: `m${Date.now()}`, senderId: 'system', senderName: 'Sistem', text: `${user.name} odaya katıldı`, time, isSystem: true }] 
-            }
-          : g
-      )
-    );
+    fetchGroups();
     setActiveGroupId(group.id);
     return true;
-  }, [user, groups, studyRecords]);
+  }, [user, studyRecords, fetchGroups]);
 
-  const leaveGroup = useCallback((groupId: string) => {
+  const leaveGroup = useCallback(async (groupId: string) => {
     if (!user) return;
-    setGroups((prev) =>
-      prev.map((g) => g.id === groupId ? { ...g, members: g.members.filter((m) => m.id !== user.id), messages: [...g.messages, { id: `m${Date.now()}`, senderId: 'system', senderName: 'Sistem', text: `${user.name} odadan ayrıldı`, time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }), isSystem: true }] } : g)
-          .filter((g) => g.members.length > 0)
-    );
+    await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', user.id);
+    
+    await supabase.from('messages').insert({
+      group_id: groupId,
+      sender_id: 'system',
+      sender_name: 'Sistem',
+      text: `${user.name} odadan ayrıldı`,
+      is_system: true
+    });
+
+    fetchGroups();
     if (activeGroupId === groupId) setActiveGroupId(null);
-  }, [user, activeGroupId]);
+  }, [user, activeGroupId, fetchGroups]);
 
-  const kickMember = useCallback((groupId: string, memberId: string, ban?: boolean) => {
-    if (!user) return;
-    const group = groups.find((g) => g.id === groupId);
-    if (!group || (group.ownerId !== user.id && !group.moderators.includes(user.id))) return;
-    if (memberId === user.id) return;
-    const memberName = group.members.find(m => m.id === memberId)?.name || 'Birisi';
-    const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-
-    setGroups((prev) =>
-      prev.map((g) => g.id === groupId ? { 
-        ...g, 
-        members: g.members.filter((m) => m.id !== memberId),
-        bannedMembers: ban ? [...g.bannedMembers, memberId] : g.bannedMembers,
-        messages: [...g.messages, { id: `m${Date.now()}`, senderId: 'system', senderName: 'Sistem', text: `${user.name}, ${memberName} adlı kişiyi ${ban ? 'engelledi' : 'çıkardı'}.`, time, isSystem: true }] 
-      } : g)
-    );
-  }, [user, groups]);
-
-  const assignModerator = useCallback((groupId: string, memberId: string) => {
-    if (!user) return;
-    const group = groups.find((g) => g.id === groupId);
-    if (!group || group.ownerId !== user.id) return;
-    const memberName = group.members.find(m => m.id === memberId)?.name || 'Birisi';
-    const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-
-    setGroups((prev) =>
-      prev.map((g) => g.id === groupId ? { 
-        ...g, 
-        moderators: [...new Set([...g.moderators, memberId])],
-        messages: [...g.messages, { id: `m${Date.now()}`, senderId: 'system', senderName: 'Sistem', text: `${user.name}, ${memberName} adlı kişiyi moderatör yaptı.`, time, isSystem: true }] 
-      } : g)
-    );
-  }, [user, groups]);
-
-  const sendMessage = useCallback((groupId: string, text: string, isSystem?: boolean) => {
-    if (!user) return;
-    const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-    setGroups(prev => prev.map(g => g.id === groupId ? {
-      ...g,
-      messages: [...g.messages, { id: `m${Date.now()}`, senderId: isSystem ? 'system' : user.id, senderName: isSystem ? 'Sistem' : user.name, text, time, isSystem }]
-    } : g));
-  }, [user]);
-
-  const updateTimerState = useCallback((groupId: string, isRunning: boolean, timeLeft: number, mode: 'study' | 'break') => {
+  const kickMember = useCallback(async (groupId: string, memberId: string, ban?: boolean) => {
     if (!user) return;
     const group = groups.find((g) => g.id === groupId);
     if (!group || (group.ownerId !== user.id && !group.moderators.includes(user.id))) return;
     
-    setGroups(prev => prev.map(g => g.id === groupId ? {
-      ...g,
-      timerState: { isRunning, timeLeft, mode, updatedAt: Date.now() }
-    } : g));
+    await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', memberId);
+    
+    if (ban) {
+      await supabase.from('study_groups').update({
+        banned_members: [...group.bannedMembers, memberId]
+      }).eq('id', groupId);
+    }
+
+    await supabase.from('messages').insert({
+      group_id: groupId,
+      sender_id: 'system',
+      sender_name: 'Sistem',
+      text: `${user.name} bir üyeyi ${ban ? 'engelledi' : 'çıkardı'}.`,
+      is_system: true
+    });
+
+    fetchGroups();
+  }, [user, groups, fetchGroups]);
+
+  const assignModerator = useCallback(async (groupId: string, memberId: string) => {
+    if (!user) return;
+    const group = groups.find((g) => g.id === groupId);
+    if (!group || group.ownerId !== user.id) return;
+
+    await supabase.from('study_groups').update({
+      moderators: [...new Set([...group.moderators, memberId])]
+    }).eq('id', groupId);
+
+    await supabase.from('messages').insert({
+      group_id: groupId,
+      sender_id: 'system',
+      sender_name: 'Sistem',
+      text: `${user.name} bir üyeyi moderatör yaptı.`,
+      is_system: true
+    });
+
+    fetchGroups();
+  }, [user, groups, fetchGroups]);
+
+  const sendMessage = useCallback(async (groupId: string, text: string, isSystem?: boolean) => {
+    if (!user) return;
+    await supabase.from('messages').insert({
+      group_id: groupId,
+      sender_id: isSystem ? 'system' : user.id,
+      sender_name: isSystem ? 'Sistem' : user.name,
+      text,
+      is_system: !!isSystem
+    });
+  }, [user]);
+
+  const updateTimerState = useCallback(async (groupId: string, isRunning: boolean, timeLeft: number, mode: 'study' | 'break') => {
+    if (!user) return;
+    const group = groups.find((g) => g.id === groupId);
+    if (!group || (group.ownerId !== user.id && !group.moderators.includes(user.id))) return;
+    
+    await supabase.from('study_groups').update({
+      timer_state: { isRunning, timeLeft, mode, updatedAt: Date.now() }
+    }).eq('id', groupId);
   }, [user, groups]);
 
   const isGroupOwner = useCallback((groupId: string): boolean => {
@@ -287,6 +396,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return [{ date: today, minutes }, ...prev];
     });
+    // In a real app, we'd also sync this to Supabase profile/stats table
   }, []);
 
   const getStats = useCallback(() => {
@@ -313,18 +423,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateUserProfile = useCallback((name: string, image: string) => {
     setUserState((prev) => prev ? { ...prev, name, image } : null);
-    // Also update in all groups the user is part of
-    setGroups((prev) => prev.map(g => ({
-      ...g,
-      members: g.members.map(m => m.id === user?.id ? { ...m, name, image } : m)
-    })));
-  }, [user]);
+  }, []);
 
   const isModerator = useCallback((groupId: string): boolean => {
     if (!user) return false;
     const group = groups.find((g) => g.id === groupId);
     return group?.moderators.includes(user.id) || false;
   }, [user, groups]);
+
+  const activeGroup = groups.find((g) => g.id === activeGroupId) ?? null;
 
   return (
     <AppContext.Provider value={{ user, isLoading, groups, activeGroup, setActiveGroupId, createGroup, joinGroup, leaveGroup, kickMember, assignModerator, isGroupOwner, isModerator, sendMessage, updateTimerState, studyRecords, addStudyMinutes, getStats, updateUserProfile }}>
